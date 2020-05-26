@@ -35,7 +35,7 @@ func walker(path string, fileInfo os.FileInfo, err error) error {
 
 	if filepath.Ext(path) == ".bsl" {
 
-		parse(path)
+		go parse(path)
 
 	} else if filepath.Base(path) == "Form.xml" {
 
@@ -75,7 +75,7 @@ func walker(path string, fileInfo os.FileInfo, err error) error {
 
 func main() {
 
-	err := filepath.Walk("C:/temp/UNF", walker)
+	err := filepath.Walk("C:/temp/UH", walker)
 
 	if err != nil {
 		fmt.Printf("%v\n", err)
