@@ -20,10 +20,8 @@ type Node interface {
 
 // Place ...
 type Place struct {
-	Pos     int
-	Len     int
-	BegLine int
-	EndLine int
+	Beg *tokens.TokenInfo
+	End *tokens.TokenInfo
 }
 
 // Decl ...
@@ -58,7 +56,6 @@ type Module struct {
 	Auto      []*AutoDecl
 	Body      []Stmt
 	Interface []Decl // TODO: Item?
-	Comments  map[int]string
 }
 
 func (node *Module) Visit(visitor *Visitor) {

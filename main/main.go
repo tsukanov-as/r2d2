@@ -5,10 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tsukanov-as/r2d2/bsl/ast"
 	"github.com/tsukanov-as/r2d2/bsl/parser"
 )
 
-func parse(path string) {
+func parse(path string) *ast.Module {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -19,7 +20,7 @@ func parse(path string) {
 	var p parser.Parser
 
 	p.Init(path)
-	p.Parse()
+	return p.Parse()
 
 }
 

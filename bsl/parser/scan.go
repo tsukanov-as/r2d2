@@ -19,14 +19,15 @@ func (p *Parser) readRune() {
 		}
 	}
 	p.rdOffset += w
-	p.curpos++
+	p.pos++
 	p.chr = r
 }
 
 func (p *Parser) next() {
 	if p.rdOffset < len(p.src) {
 		if p.chr == '\n' {
-			p.curline++
+			p.line++
+			p.linpos = p.pos
 		}
 		p.readRune()
 	} else {
@@ -54,13 +55,11 @@ func (p *Parser) skipWhitespace() {
 	}
 }
 
-func (p *Parser) scanComment() string {
+func (p *Parser) scanComment() {
 	p.next()
-	start := p.offset
 	for p.chr != '\n' && !p.eot {
 		p.next()
 	}
-	return p.src[start:p.offset]
 }
 
 func (p *Parser) scanIdentifier() string {
@@ -113,16 +112,16 @@ func (p *Parser) scanDateTime() string {
 
 func (p *Parser) scan() tokens.Token {
 
-	p.endpos = p.curpos
-	p.endline = p.curline
-
 	if p.lit != "" && p.lit[len(p.lit)-1] == '\n' {
-		p.curline++
+		p.line++
+		p.linpos = p.pos - 1
 	}
 
 scan:
 
 	p.skipWhitespace()
+
+	p.tokpos = p.pos
 
 	switch ch := p.chr; {
 	case isLetter(ch):
@@ -189,8 +188,17 @@ scan:
 		case '/':
 			p.next()
 			if p.chr == '/' {
-				p.comments[p.curline] = p.scanComment()
-				p.tok = tokens.COMMENT
+				p.scanComment()
+				tokpos := p.tokpos + 2
+				p.tokInfo.Next = &tokens.TokenInfo{
+					Token:  tokens.COMMENT,
+					Pos:    tokpos,
+					Len:    p.pos - tokpos,
+					Line:   p.line,
+					Column: tokpos - p.linpos,
+					Prev:   p.tokInfo,
+				}
+				p.tokInfo = p.tokInfo.Next
 				p.next()
 				goto scan
 			} else {
@@ -258,6 +266,14 @@ scan:
 			p.tok = tokens.EOF
 		}
 	}
-	//println(p.tok.String())
+	p.tokInfo.Next = &tokens.TokenInfo{
+		Token:  p.tok,
+		Pos:    p.tokpos,
+		Len:    p.pos - p.tokpos,
+		Line:   p.line,
+		Column: p.tokpos - p.linpos,
+		Prev:   p.tokInfo,
+	}
+	p.tokInfo = p.tokInfo.Next
 	return p.tok
 }
