@@ -1,14 +1,11 @@
 package main
 
 import (
-	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/tsukanov-as/r2d2/bsl/parser"
-	"github.com/tsukanov-as/r2d2/conf"
 )
 
 func parse(path string) {
@@ -42,34 +39,34 @@ func walker(path string, fileInfo os.FileInfo, err error) error {
 
 	} else if filepath.Base(path) == "Form.xml" {
 
-		xmlFile, err := os.Open(path)
+		// xmlFile, err := os.Open(path)
 
-		if err != nil {
-			fmt.Println(err)
-		}
+		// if err != nil {
+		// 	fmt.Println(err)
+		// }
 
-		defer xmlFile.Close()
+		// defer xmlFile.Close()
 
-		byteValue, _ := ioutil.ReadAll(xmlFile)
+		// byteValue, _ := ioutil.ReadAll(xmlFile)
 
-		var mdo conf.ManagedForm
-		xml.Unmarshal(byteValue, &mdo)
+		// var mdo conf.ManagedForm
+		// xml.Unmarshal(byteValue, &mdo)
 
 	} else if filepath.Ext(path) == ".xml" && filepath.Base(path) != "Template.xml" {
 
-		xmlFile, err := os.Open(path)
+		// xmlFile, err := os.Open(path)
 
-		if err != nil {
-			fmt.Println(err)
-		}
+		// if err != nil {
+		// 	fmt.Println(err)
+		// }
 
-		defer xmlFile.Close()
+		// defer xmlFile.Close()
 
-		byteValue, _ := ioutil.ReadAll(xmlFile)
+		// byteValue, _ := ioutil.ReadAll(xmlFile)
 
-		var mdo conf.MetaDataObject
+		// var mdo conf.MetaDataObject
 
-		xml.Unmarshal(byteValue, &mdo)
+		// xml.Unmarshal(byteValue, &mdo)
 
 	}
 
