@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"strings"
 
 	"github.com/tsukanov-as/r2d2/bsl/ast"
@@ -66,15 +67,12 @@ func (p *Parser) Init(path string) {
 
 func checkError(err error, msg string) {
 	if err != nil {
-		//log.Fatal(msg)
-		println(msg)
+		log.Fatal(msg)
 	}
 }
 
 func (p *Parser) error(msg string) {
-	print("line: ", p.curline)
-	println(msg)
-	//panic(msg)
+	panic(fmt.Sprint(msg, " in ", p.path, ":", p.curline))
 }
 
 func (p *Parser) warning(msg string) {
@@ -84,9 +82,7 @@ func (p *Parser) warning(msg string) {
 func (p *Parser) expect(tok tokens.Token) {
 	if p.tok != tok {
 		//spew.Dump(p)
-		p.error(fmt.Sprintf(" expected '%v'", tok.String()))
-		println(p.path)
-		println("-----------------------")
+		p.error(fmt.Sprintf("Expected '%v'", tok.String()))
 	}
 }
 
