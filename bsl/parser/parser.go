@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/tsukanov-as/radar/bsl/ast"
-	"github.com/tsukanov-as/radar/bsl/tokens"
+	"github.com/tsukanov-as/r2d2/bsl/ast"
+	"github.com/tsukanov-as/r2d2/bsl/tokens"
 )
 
 // Parser ...

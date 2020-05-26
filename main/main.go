@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tsukanov-as/radar/bsl/parser"
-	"github.com/tsukanov-as/radar/conf"
+	"github.com/tsukanov-as/r2d2/bsl/parser"
+	"github.com/tsukanov-as/r2d2/conf"
 )
 
 func main() {

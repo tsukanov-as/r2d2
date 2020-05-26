@@ -3,7 +3,7 @@ package ast
 import (
 	"strings"
 
-	"github.com/tsukanov-as/radar/bsl/tokens"
+	"github.com/tsukanov-as/r2d2/bsl/tokens"
 )
 
 // Value ...

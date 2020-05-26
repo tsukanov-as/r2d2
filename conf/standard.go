@@ -1,7 +1,7 @@
 package conf
 
 import (
-	"github.com/tsukanov-as/radar/conf/enums"
+	"github.com/tsukanov-as/r2d2/conf/enums"
 )
 
 // StandardAttributes ...

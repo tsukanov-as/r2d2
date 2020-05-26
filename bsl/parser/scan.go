@@ -3,7 +3,7 @@ package parser
 import (
 	"unicode/utf8"
 
-	"github.com/tsukanov-as/radar/bsl/tokens"
+	"github.com/tsukanov-as/r2d2/bsl/tokens"
 )
 
 func (p *Parser) readRune() {
