@@ -187,7 +187,7 @@ func (node *ParamDecl) Accept(visitor *Visitor) {
 
 // MethodDecl ...
 type MethodDecl struct {
-	Sign Signature
+	Sign *Signature
 	Vars []*VarLocDecl
 	Auto []*AutoDecl
 	Body []Stmt
@@ -213,20 +213,16 @@ func (node *MethodDecl) Accept(visitor *Visitor) {
 }
 
 // Signature ...
-type Signature interface {
-	// ProcDecl, FuncDecl
-}
-
-// ProcSign ...
-type ProcSign struct {
+type Signature struct {
 	Name      string
+	Function  bool
 	Directive *tokens.Token
 	Params    []*ParamDecl
 	Export    bool
 	Place
 }
 
-func (node *ProcSign) Accept(visitor *Visitor) {
+func (node *Signature) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitProcSign {
 		plugin.VisitProcSign(node)
 	}
@@ -235,27 +231,6 @@ func (node *ProcSign) Accept(visitor *Visitor) {
 	}
 	for _, plugin := range visitor.LeaveProcSign {
 		plugin.LeaveProcSign(node)
-	}
-}
-
-// FuncSign ...
-type FuncSign struct {
-	Name      string
-	Directive *tokens.Token
-	Params    []*ParamDecl
-	Export    bool
-	Place
-}
-
-func (node *FuncSign) Accept(visitor *Visitor) {
-	for _, plugin := range visitor.VisitFuncSign {
-		plugin.VisitFuncSign(node)
-	}
-	for _, decl := range node.Params {
-		decl.Accept(visitor)
-	}
-	for _, plugin := range visitor.LeaveFuncSign {
-		plugin.LeaveFuncSign(node)
 	}
 }
 

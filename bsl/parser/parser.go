@@ -268,29 +268,16 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 		export = true
 		p.scan()
 	}
-	var sign ast.Decl
-	if p.isFunc {
-		sign = &ast.FuncSign{
-			Name:      name,
-			Directive: p.directive,
-			Params:    params,
-			Export:    export,
-			Place: ast.Place{
-				Beg: beg,
-				End: p.prevTokInfo,
-			},
-		}
-	} else {
-		sign = &ast.ProcSign{
-			Name:      name,
-			Directive: p.directive,
-			Params:    params,
-			Export:    export,
-			Place: ast.Place{
-				Beg: beg,
-				End: p.prevTokInfo,
-			},
-		}
+	sign := &ast.Signature{
+		Name:      name,
+		Function:  p.isFunc,
+		Directive: p.directive,
+		Params:    params,
+		Export:    export,
+		Place: ast.Place{
+			Beg: beg,
+			End: p.prevTokInfo,
+		},
 	}
 	nameLower := strings.ToLower(name)
 	object := p.unknown[nameLower]

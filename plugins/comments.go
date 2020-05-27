@@ -1,6 +1,8 @@
 package plugins
 
 import (
+	"strings"
+
 	"github.com/tsukanov-as/r2d2/bsl/ast"
 	"github.com/tsukanov-as/r2d2/bsl/parser"
 	"github.com/tsukanov-as/r2d2/bsl/tokens"
@@ -17,9 +19,11 @@ func PluginWrongComment(p *parser.Parser) *pluginWrongComment {
 func (p *pluginWrongComment) VisitMethodDecl(node ast.Node) {
 	decl := node.(*ast.MethodDecl)
 	nextTokenInfo := decl.End.Next
-	if nextTokenInfo.Token == tokens.COMMENT {
-		end := p.src[nextTokenInfo.BegOffset:nextTokenInfo.EndOffset]
-		_ = end
-		// println("---->>> ", end)
+	if nextTokenInfo.Token == tokens.COMMENT && nextTokenInfo.Line == decl.End.Line {
+		comment := strings.TrimRight(p.src[nextTokenInfo.BegOffset:nextTokenInfo.EndOffset], " \t\r\n")
+		validComment := " " + decl.Sign.Name + "()"
+		if comment != validComment {
+			println("wrong comment: `"+comment+"`", " valid comment: `"+validComment+"`")
+		}
 	}
 }
