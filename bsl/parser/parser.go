@@ -20,14 +20,15 @@ type Parser struct {
 	eot      bool
 	err      int
 
-	scope   *ast.Scope
-	tok     tokens.Token
-	lit     string
-	pos     int
-	line    int
-	tokpos  int
-	linpos  int
-	tokInfo *tokens.TokenInfo
+	scope       *ast.Scope
+	tok         tokens.Token
+	lit         string
+	pos         int
+	line        int
+	tokOffset   int
+	lineOffset  int
+	tokInfo     *tokens.TokenInfo
+	prevTokInfo *tokens.TokenInfo
 
 	isFunc    bool
 	allowVar  bool
@@ -62,6 +63,10 @@ func (p *Parser) Init(path string) {
 		p.eot = true
 		p.chr = -1 // eof
 	}
+}
+
+func (p *Parser) Source() string {
+	return p.src
 }
 
 func checkError(err error, msg string) {
@@ -174,7 +179,7 @@ func (p *Parser) parseVarModListDecl() ast.Decl {
 		List:      list,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 	p.expect(tokens.SEMICOLON)
@@ -201,7 +206,7 @@ func (p *Parser) parseVarModDecl() *ast.VarModDecl {
 		Export:    export,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 	if export {
@@ -272,7 +277,7 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 			Export:    export,
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -283,7 +288,7 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 			Export:    export,
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -325,7 +330,7 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 		Body: body,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -366,7 +371,7 @@ func (p *Parser) parseParamDecl() (decl *ast.ParamDecl) {
 		Value: expr,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 	nameLower := strings.ToLower(name)
@@ -394,7 +399,7 @@ func (p *Parser) parseExpression() ast.Expr {
 			Right:    p.parseAndExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -413,7 +418,7 @@ func (p *Parser) parseAndExpr() ast.Expr {
 			Right:    p.parseNotExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -428,7 +433,7 @@ func (p *Parser) parseNotExpr() (expr ast.Expr) {
 			Expr: p.parseRelExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -454,7 +459,7 @@ func (p *Parser) parseRelExpr() ast.Expr {
 			Right:    p.parseAddExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -474,7 +479,7 @@ func (p *Parser) parseAddExpr() ast.Expr {
 			Right:    p.parseMulExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -495,7 +500,7 @@ func (p *Parser) parseMulExpr() ast.Expr {
 			Right:    p.parseUnaryExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -512,7 +517,7 @@ func (p *Parser) parseUnaryExpr() ast.Expr {
 			Operand:  p.parseOperand(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	case tokens.EOF:
@@ -577,7 +582,7 @@ loop:
 		List: list,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -620,7 +625,7 @@ func (p *Parser) parseNewExpr() ast.Expr {
 		Args: args,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -683,7 +688,7 @@ func (p *Parser) parseIdentExpr(allowNewVar bool) (expr *ast.IdentExpr, newvar *
 		Args: args,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}, newvar, call
 }
@@ -717,7 +722,7 @@ loop:
 				Args: args,
 				Place: ast.Place{
 					Beg: beg,
-					End: p.tokInfo.Prev,
+					End: p.prevTokInfo,
 				},
 			}
 			tail = append(tail, expr)
@@ -733,7 +738,7 @@ loop:
 				Expr: index,
 				Place: ast.Place{
 					Beg: beg,
-					End: p.tokInfo.Prev,
+					End: p.prevTokInfo,
 				},
 			}
 			tail = append(tail, expr)
@@ -787,7 +792,7 @@ func (p *Parser) parseTernaryExpr() ast.Expr {
 		Tail: tail,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -802,7 +807,7 @@ func (p *Parser) parseParenExpr() ast.Expr {
 		Expr: expr,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -891,7 +896,7 @@ func (p *Parser) parseRaiseStmt() *ast.RaiseStmt {
 		Expr: expr,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -903,7 +908,7 @@ func (p *Parser) parseExecuteStmt() *ast.ExecuteStmt {
 		Expr: p.parseExpression(),
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -916,7 +921,7 @@ func (p *Parser) parseAssignOrCallStmt() (stmt ast.Stmt) {
 			Ident: left,
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -935,7 +940,7 @@ func (p *Parser) parseAssignOrCallStmt() (stmt ast.Stmt) {
 			Right: right,
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -964,7 +969,7 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 				Then: elsifthen,
 				Place: ast.Place{
 					Beg: beg,
-					End: p.tokInfo.Prev,
+					End: p.prevTokInfo,
 				},
 			})
 		}
@@ -977,7 +982,7 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 			Body: p.parseStatements(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -990,7 +995,7 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 		Else:  elsepart,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1008,7 +1013,7 @@ func (p *Parser) parseTryStmt() *ast.TryStmt {
 		Except: except,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1020,7 +1025,7 @@ func (p *Parser) parseExceptStmt() ast.ExceptStmt {
 		Body: p.parseStatements(),
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1039,7 +1044,7 @@ func (p *Parser) parseWhileStmt() *ast.WhileStmt {
 		Body: body,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1076,7 +1081,7 @@ func (p *Parser) parseForStmt() *ast.ForStmt {
 		Body:  body,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1110,7 +1115,7 @@ func (p *Parser) parseForEachStmt() *ast.ForEachStmt {
 		Body:  body,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1125,7 +1130,7 @@ func (p *Parser) parseGotoStmt() *ast.GotoStmt {
 		Label: label,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1140,7 +1145,7 @@ func (p *Parser) parseLabelStmt() *ast.LabelStmt {
 		Label: label,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1156,7 +1161,7 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 		Expr: expr,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1175,7 +1180,7 @@ func (p *Parser) parsePrepExpression() ast.PrepExpr {
 			Right:    p.parsePrepAndExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1194,7 +1199,7 @@ func (p *Parser) parsePrepAndExpr() ast.PrepExpr {
 			Right:    p.parsePrepNotExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1209,7 +1214,7 @@ func (p *Parser) parsePrepNotExpr() (expr ast.PrepExpr) {
 			Expr: p.parsePrepSymExpr(),
 			Place: ast.Place{
 				Beg: beg,
-				End: p.tokInfo.Prev,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -1258,7 +1263,7 @@ func (p *Parser) parsePrepElsIfInst() *ast.PrepElsIfInst {
 		Cond: cond,
 		Place: ast.Place{
 			Beg: beg,
-			End: p.tokInfo.Prev,
+			End: p.prevTokInfo,
 		},
 	}
 }

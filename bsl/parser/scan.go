@@ -27,7 +27,7 @@ func (p *Parser) next() {
 	if p.rdOffset < len(p.src) {
 		if p.chr == '\n' {
 			p.line++
-			p.linpos = p.pos
+			p.lineOffset = p.offset
 		}
 		p.readRune()
 	} else {
@@ -112,16 +112,18 @@ func (p *Parser) scanDateTime() string {
 
 func (p *Parser) scan() tokens.Token {
 
+	p.prevTokInfo = p.tokInfo
+
 	if p.lit != "" && p.lit[len(p.lit)-1] == '\n' {
 		p.line++
-		p.linpos = p.pos - 1
+		p.lineOffset = p.offset - 1
 	}
 
 scan:
 
 	p.skipWhitespace()
 
-	p.tokpos = p.pos
+	p.tokOffset = p.offset
 
 	switch ch := p.chr; {
 	case isLetter(ch):
@@ -189,13 +191,13 @@ scan:
 			p.next()
 			if p.chr == '/' {
 				p.scanComment()
-				tokpos := p.tokpos + 2
+				tokpos := p.tokOffset + 2
 				p.tokInfo.Next = &tokens.TokenInfo{
 					Token:  tokens.COMMENT,
 					Pos:    tokpos,
-					Len:    p.pos - tokpos,
+					Len:    p.offset - tokpos,
 					Line:   p.line,
-					Column: tokpos - p.linpos,
+					Column: tokpos - p.lineOffset,
 					Prev:   p.tokInfo,
 				}
 				p.tokInfo = p.tokInfo.Next
@@ -268,10 +270,10 @@ scan:
 	}
 	p.tokInfo.Next = &tokens.TokenInfo{
 		Token:  p.tok,
-		Pos:    p.tokpos,
-		Len:    p.pos - p.tokpos,
+		Pos:    p.tokOffset,
+		Len:    p.offset - p.tokOffset,
 		Line:   p.line,
-		Column: p.tokpos - p.linpos,
+		Column: p.tokOffset - p.lineOffset,
 		Prev:   p.tokInfo,
 	}
 	p.tokInfo = p.tokInfo.Next
