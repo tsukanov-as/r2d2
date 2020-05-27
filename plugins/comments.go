@@ -16,9 +16,9 @@ func PluginWrongComment(p *parser.Parser) *pluginWrongComment {
 
 func (p *pluginWrongComment) VisitMethodDecl(node ast.Node) {
 	decl := node.(*ast.MethodDecl)
-	next := decl.End.Next
-	if next.Token == tokens.COMMENT {
-		end := p.src[next.Pos : next.Pos+next.Len]
+	nextTokenInfo := decl.End.Next
+	if nextTokenInfo.Token == tokens.COMMENT {
+		end := p.src[nextTokenInfo.BegOffset:nextTokenInfo.EndOffset]
 		_ = end
 		// println("---->>> ", end)
 	}

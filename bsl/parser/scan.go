@@ -193,12 +193,12 @@ scan:
 				p.scanComment()
 				tokpos := p.tokOffset + 2
 				p.tokInfo.Next = &tokens.TokenInfo{
-					Token:  tokens.COMMENT,
-					Pos:    tokpos,
-					Len:    p.offset - tokpos,
-					Line:   p.line,
-					Column: tokpos - p.lineOffset,
-					Prev:   p.tokInfo,
+					Token:     tokens.COMMENT,
+					BegOffset: tokpos,
+					EndOffset: p.offset,
+					Line:      p.line,
+					Column:    tokpos - p.lineOffset,
+					Prev:      p.tokInfo,
 				}
 				p.tokInfo = p.tokInfo.Next
 				p.next()
@@ -269,12 +269,12 @@ scan:
 		}
 	}
 	p.tokInfo.Next = &tokens.TokenInfo{
-		Token:  p.tok,
-		Pos:    p.tokOffset,
-		Len:    p.offset - p.tokOffset,
-		Line:   p.line,
-		Column: p.tokOffset - p.lineOffset,
-		Prev:   p.tokInfo,
+		Token:     p.tok,
+		BegOffset: p.tokOffset,
+		EndOffset: p.offset,
+		Line:      p.line,
+		Column:    p.tokOffset - p.lineOffset,
+		Prev:      p.tokInfo,
 	}
 	p.tokInfo = p.tokInfo.Next
 	return p.tok

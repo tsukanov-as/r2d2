@@ -8,13 +8,13 @@ import (
 type Token int
 
 type TokenInfo struct {
-	Token  Token
-	Pos    int
-	Len    int
-	Line   int
-	Column int
-	Next   *TokenInfo
-	Prev   *TokenInfo
+	Token     Token
+	BegOffset int
+	EndOffset int
+	Line      int
+	Column    int
+	Next      *TokenInfo
+	Prev      *TokenInfo
 }
 
 // tokens
