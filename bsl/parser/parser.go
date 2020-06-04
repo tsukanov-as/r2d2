@@ -20,14 +20,15 @@ type Parser struct {
 	eot      bool
 	err      int
 
-	scope   *ast.Scope
-	tok     tokens.Token
-	lit     string
-	curpos  int
-	begpos  int
-	endpos  int
-	curline int
-	endline int
+	scope       *ast.Scope
+	tok         tokens.Token
+	lit         string
+	pos         int
+	line        int
+	tokOffset   int
+	lineOffset  int
+	tokInfo     *tokens.TokenInfo
+	prevTokInfo *tokens.TokenInfo
 
 	isFunc    bool
 	allowVar  bool
@@ -36,9 +37,8 @@ type Parser struct {
 	vars      map[string]*ast.Item
 	methods   map[string]*ast.Item
 	unknown   map[string]*ast.Item
-	callSites map[*ast.Item][]*ast.Place
+	callSites map[*ast.Item][]*tokens.TokenInfo
 	exported  []ast.Decl
-	comments  map[int]string
 }
 
 // Init ...
@@ -48,14 +48,14 @@ func (p *Parser) Init(path string) {
 	p.path = path
 	p.src = string(src[3:])
 	p.scope = ast.NewScope(nil)
-	p.curline = 1
-	p.comments = make(map[int]string)
+	p.line = 1
 	p.offset = 0
 	p.rdOffset = 0
 	p.vars = make(map[string]*ast.Item)
 	p.methods = make(map[string]*ast.Item)
 	p.unknown = make(map[string]*ast.Item)
-	p.callSites = make(map[*ast.Item][]*ast.Place)
+	p.callSites = make(map[*ast.Item][]*tokens.TokenInfo)
+	p.tokInfo = &tokens.TokenInfo{}
 	if len(p.src) > 0 {
 		p.readRune()
 		p.eot = false
@@ -65,6 +65,10 @@ func (p *Parser) Init(path string) {
 	}
 }
 
+func (p *Parser) Source() string {
+	return p.src
+}
+
 func checkError(err error, msg string) {
 	if err != nil {
 		log.Fatal(msg)
@@ -72,7 +76,7 @@ func checkError(err error, msg string) {
 }
 
 func (p *Parser) error(msg string) {
-	panic(fmt.Sprint(msg, " in ", p.path, ":", p.curline))
+	panic(fmt.Sprint(msg, " in ", p.path, ":", p.line))
 }
 
 func (p *Parser) warning(msg string) {
@@ -107,7 +111,6 @@ func (p *Parser) Parse() *ast.Module {
 		Auto:      p.scope.Auto,
 		Body:      body,
 		Interface: p.exported,
-		Comments:  p.comments,
 	}
 }
 
@@ -116,13 +119,13 @@ func (p *Parser) Parse() *ast.Module {
 func (p *Parser) parseModDecls() []ast.Decl {
 	var list []ast.Decl
 	p.allowVar = true
-	for p.tok == tokens.DIRECTIVE {
-		p.directive = tokens.LookupDirective(p.lit)
-		p.scan()
-	}
 loop:
 	for {
-		pos, line := p.begpos, p.curline
+		p.directive = nil
+		for p.tok == tokens.DIRECTIVE {
+			p.directive = tokens.LookupDirective(p.lit)
+			p.scan()
+		}
 		switch p.tok {
 		case tokens.VAR:
 			if !p.allowVar {
@@ -138,79 +141,32 @@ loop:
 			list = append(list, p.parseMethodDecl())
 			p.allowVar = false
 		case tokens.PREGION:
-			inst := p.parsePrepRegionInst()
+			list = append(list, p.parsePrepRegionInst())
 			p.scan()
-			inst.Place = ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
-			}
-			list = append(list, inst)
 		case tokens.PENDREGION:
+			list = append(list, p.parsePrepEndRegionInst())
 			p.scan()
-			list = append(list, &ast.PrepEndRegionInst{
-				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
-				},
-			})
 		case tokens.PIF:
-			inst := p.parsePrepIfInst()
+			list = append(list, p.parsePrepIfInst())
 			p.scan()
-			inst.Place = ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
-			}
-			list = append(list, inst)
 		case tokens.PELSIF:
-			inst := p.parsePrepElsIfInst()
+			list = append(list, p.parsePrepElsIfInst())
 			p.scan()
-			inst.Place = ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
-			}
-			list = append(list, inst)
 		case tokens.PELSE:
+			list = append(list, p.parsePrepElseInst())
 			p.scan()
-			list = append(list, &ast.PrepElseInst{
-				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
-				},
-			})
 		case tokens.PENDIF:
+			list = append(list, p.parsePrepEndIfInst())
 			p.scan()
-			list = append(list, &ast.PrepEndIfInst{
-				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
-				},
-			})
 		default:
 			break loop
-		}
-		p.directive = nil
-		for p.tok == tokens.DIRECTIVE {
-			p.directive = tokens.LookupDirective(p.lit)
-			p.scan()
 		}
 	}
 	return list
 }
 
 func (p *Parser) parseVarModListDecl() ast.Decl {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	var list []*ast.VarModDecl
 	list = append(list, p.parseVarModDecl())
@@ -222,10 +178,8 @@ func (p *Parser) parseVarModListDecl() ast.Decl {
 		Directive: p.directive,
 		List:      list,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 	p.expect(tokens.SEMICOLON)
@@ -237,7 +191,7 @@ func (p *Parser) parseVarModListDecl() ast.Decl {
 }
 
 func (p *Parser) parseVarModDecl() *ast.VarModDecl {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.expect(tokens.IDENT)
 	name := p.lit
 	p.scan()
@@ -251,10 +205,8 @@ func (p *Parser) parseVarModDecl() *ast.VarModDecl {
 		Directive: p.directive,
 		Export:    export,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 	if export {
@@ -291,10 +243,8 @@ func (p *Parser) parseVarLocDecl() *ast.VarLocDecl {
 	decl := &ast.VarLocDecl{
 		Name: name,
 		Place: ast.Place{
-			Pos:     p.begpos,
-			Len:     p.curpos - p.begpos,
-			BegLine: p.curline,
-			EndLine: p.endline,
+			Beg: p.tokInfo,
+			End: p.tokInfo,
 		},
 	}
 	p.vars[strings.ToLower(name)] = &ast.Item{
@@ -306,7 +256,7 @@ func (p *Parser) parseVarLocDecl() *ast.VarLocDecl {
 }
 
 func (p *Parser) parseMethodDecl() *ast.MethodDecl {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	export := false
 	p.scan()
 	p.expect(tokens.IDENT)
@@ -318,33 +268,16 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 		export = true
 		p.scan()
 	}
-	var sign ast.Decl
-	if p.isFunc {
-		sign = &ast.FuncSign{
-			Name:      name,
-			Directive: p.directive,
-			Params:    params,
-			Export:    export,
-			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
-			},
-		}
-	} else {
-		sign = &ast.ProcSign{
-			Name:      name,
-			Directive: p.directive,
-			Params:    params,
-			Export:    export,
-			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
-			},
-		}
+	sign := &ast.Signature{
+		Name:      name,
+		Function:  p.isFunc,
+		Directive: p.directive,
+		Params:    params,
+		Export:    export,
+		Place: ast.Place{
+			Beg: beg,
+			End: p.prevTokInfo,
+		},
 	}
 	nameLower := strings.ToLower(name)
 	object := p.unknown[nameLower]
@@ -383,10 +316,8 @@ func (p *Parser) parseMethodDecl() *ast.MethodDecl {
 		Auto: auto,
 		Body: body,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -407,7 +338,7 @@ func (p *Parser) parseParams() (list []*ast.ParamDecl) {
 }
 
 func (p *Parser) parseParamDecl() (decl *ast.ParamDecl) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	byval := false
 	if p.tok == tokens.VAL {
 		byval = true
@@ -426,10 +357,8 @@ func (p *Parser) parseParamDecl() (decl *ast.ParamDecl) {
 		ByVal: byval,
 		Value: expr,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 	nameLower := strings.ToLower(name)
@@ -446,7 +375,7 @@ func (p *Parser) parseParamDecl() (decl *ast.ParamDecl) {
 // @EXPR
 
 func (p *Parser) parseExpression() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parseAndExpr()
 	for p.tok == tokens.OR {
 		op := p.tok
@@ -456,10 +385,8 @@ func (p *Parser) parseExpression() ast.Expr {
 			Operator: op,
 			Right:    p.parseAndExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -467,7 +394,7 @@ func (p *Parser) parseExpression() ast.Expr {
 }
 
 func (p *Parser) parseAndExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parseNotExpr()
 	for p.tok == tokens.AND {
 		op := p.tok
@@ -477,10 +404,8 @@ func (p *Parser) parseAndExpr() ast.Expr {
 			Operator: op,
 			Right:    p.parseNotExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -488,16 +413,14 @@ func (p *Parser) parseAndExpr() ast.Expr {
 }
 
 func (p *Parser) parseNotExpr() (expr ast.Expr) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	if p.tok == tokens.NOT {
 		p.scan()
 		expr = &ast.NotExpr{
 			Expr: p.parseRelExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -507,7 +430,7 @@ func (p *Parser) parseNotExpr() (expr ast.Expr) {
 }
 
 func (p *Parser) parseRelExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parseAddExpr()
 	for p.tok == tokens.EQL ||
 		p.tok == tokens.NEQ ||
@@ -522,10 +445,8 @@ func (p *Parser) parseRelExpr() ast.Expr {
 			Operator: op,
 			Right:    p.parseAddExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -533,7 +454,7 @@ func (p *Parser) parseRelExpr() ast.Expr {
 }
 
 func (p *Parser) parseAddExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parseMulExpr()
 	for p.tok == tokens.ADD ||
 		p.tok == tokens.SUB {
@@ -544,10 +465,8 @@ func (p *Parser) parseAddExpr() ast.Expr {
 			Operator: op,
 			Right:    p.parseMulExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -555,7 +474,7 @@ func (p *Parser) parseAddExpr() ast.Expr {
 }
 
 func (p *Parser) parseMulExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parseUnaryExpr()
 	for p.tok == tokens.MUL ||
 		p.tok == tokens.DIV ||
@@ -567,10 +486,8 @@ func (p *Parser) parseMulExpr() ast.Expr {
 			Operator: op,
 			Right:    p.parseUnaryExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -578,7 +495,7 @@ func (p *Parser) parseMulExpr() ast.Expr {
 }
 
 func (p *Parser) parseUnaryExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	switch op := p.tok; op {
 	case tokens.ADD, tokens.SUB:
 		p.scan()
@@ -586,10 +503,8 @@ func (p *Parser) parseUnaryExpr() ast.Expr {
 			Operator: op,
 			Operand:  p.parseOperand(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	case tokens.EOF:
@@ -608,10 +523,8 @@ func (p *Parser) parseOperand() (expr ast.Expr) {
 			Kind:  p.tok,
 			Value: nil, // TODO: value
 			Place: ast.Place{
-				Pos:     p.begpos,
-				Len:     p.curpos - p.begpos,
-				BegLine: p.curline,
-				EndLine: p.endline,
+				Beg: p.tokInfo,
+				End: p.tokInfo,
 			},
 		}
 		p.scan()
@@ -630,7 +543,7 @@ func (p *Parser) parseOperand() (expr ast.Expr) {
 }
 
 func (p *Parser) parseStringExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	var list []*ast.BasicLitExpr
 loop:
 	for {
@@ -655,10 +568,8 @@ loop:
 	return &ast.StringExpr{
 		List: list,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -668,10 +579,8 @@ func (p *Parser) appendStringPart(list []*ast.BasicLitExpr) []*ast.BasicLitExpr 
 		Kind:  p.tok,
 		Value: nil,
 		Place: ast.Place{
-			Pos:     p.begpos,
-			Len:     p.curpos - p.begpos,
-			BegLine: p.curline,
-			EndLine: p.endline,
+			Beg: p.tokInfo,
+			End: p.tokInfo,
 		},
 	})
 	p.scan()
@@ -679,7 +588,7 @@ func (p *Parser) appendStringPart(list []*ast.BasicLitExpr) []*ast.BasicLitExpr 
 }
 
 func (p *Parser) parseNewExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	var name *string
 	var args []ast.Expr
 	p.scan()
@@ -702,23 +611,16 @@ func (p *Parser) parseNewExpr() ast.Expr {
 		Name: name,
 		Args: args,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseIdentExpr(allowNewVar bool) (expr *ast.IdentExpr, newvar *ast.Item, call bool) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	name := p.lit
-	autoPlace := ast.Place{
-		Pos:     p.begpos,
-		Len:     p.curpos - p.begpos,
-		BegLine: p.curline,
-		EndLine: p.endline,
-	}
+	autoPlace := p.tokInfo
 	p.scan()
 	var item *ast.Item
 	var args []ast.Expr
@@ -736,8 +638,8 @@ func (p *Parser) parseIdentExpr(allowNewVar bool) (expr *ast.IdentExpr, newvar *
 			if item = p.unknown[nameLower]; item == nil {
 				item = &ast.Item{Name: name, Decl: nil}
 				p.unknown[nameLower] = item
-				callSites := []*ast.Place{}
-				callSites = append(callSites, &autoPlace)
+				callSites := []*tokens.TokenInfo{}
+				callSites = append(callSites, autoPlace)
 				p.callSites[item] = callSites
 			}
 		}
@@ -752,7 +654,14 @@ func (p *Parser) parseIdentExpr(allowNewVar bool) (expr *ast.IdentExpr, newvar *
 		item = p.scope.Find(name)
 		if item == nil {
 			if allowNewVar {
-				item = &ast.Item{Name: name, Decl: &ast.AutoDecl{Name: name, Place: autoPlace}}
+				decl := &ast.AutoDecl{
+					Name: name,
+					Place: ast.Place{
+						Beg: autoPlace,
+						End: autoPlace,
+					},
+				}
+				item = &ast.Item{Name: name, Decl: decl}
 				newvar = item
 			} else {
 				item = &ast.Item{Name: name, Decl: nil}
@@ -765,16 +674,14 @@ func (p *Parser) parseIdentExpr(allowNewVar bool) (expr *ast.IdentExpr, newvar *
 		Tail: tail,
 		Args: args,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}, newvar, call
 }
 
 func (p *Parser) parseTail(call *bool) (tail []ast.Expr) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	var args []ast.Expr
 loop:
 	for {
@@ -801,10 +708,8 @@ loop:
 				Name: name,
 				Args: args,
 				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
+					Beg: beg,
+					End: p.prevTokInfo,
 				},
 			}
 			tail = append(tail, expr)
@@ -819,10 +724,8 @@ loop:
 			expr := &ast.IndexExpr{
 				Expr: index,
 				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
+					Beg: beg,
+					End: p.prevTokInfo,
 				},
 			}
 			tail = append(tail, expr)
@@ -850,7 +753,7 @@ func (p *Parser) parseArguments() (args []ast.Expr) {
 }
 
 func (p *Parser) parseTernaryExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	p.expect(tokens.LPAREN)
 	p.scan()
@@ -875,16 +778,14 @@ func (p *Parser) parseTernaryExpr() ast.Expr {
 		Else: elsepart,
 		Tail: tail,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseParenExpr() ast.Expr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	expr := p.parseExpression()
 	p.expect(tokens.RPAREN)
@@ -892,10 +793,8 @@ func (p *Parser) parseParenExpr() ast.Expr {
 	return &ast.ParenExpr{
 		Expr: expr,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -954,32 +853,19 @@ func (p *Parser) parseStmt() (stmt ast.Stmt) {
 	case tokens.GOTO:
 		stmt = p.parseGotoStmt()
 	case tokens.LABEL:
-		stmt = &ast.LabelStmt{
-			Label: p.lit,
-			Place: ast.Place{
-				Pos:     p.begpos,
-				Len:     p.curpos - p.begpos,
-				BegLine: p.curline,
-				EndLine: p.endline,
-			}}
-		p.scan()
-		p.expect(tokens.COLON)
-		p.tok = tokens.SEMICOLON // cheat code
+		stmt = p.parseLabelStmt()
 	case tokens.PREGION:
 		stmt = p.parsePrepRegionInst()
 	case tokens.PENDREGION:
-		stmt = &ast.PrepEndRegionInst{}
-		p.tok = tokens.SEMICOLON // cheat code
+		stmt = p.parsePrepEndRegionInst()
 	case tokens.PIF:
 		stmt = p.parsePrepIfInst()
 	case tokens.PELSIF:
 		stmt = p.parsePrepElsIfInst()
 	case tokens.PELSE:
-		stmt = &ast.PrepElseInst{}
-		p.tok = tokens.SEMICOLON // cheat code
+		stmt = p.parsePrepElseInst()
 	case tokens.PENDIF:
-		stmt = &ast.PrepEndIfInst{}
-		p.tok = tokens.SEMICOLON // cheat code
+		stmt = p.parsePrepEndIfInst()
 	case tokens.SEMICOLON:
 		// NOP
 	}
@@ -987,7 +873,7 @@ func (p *Parser) parseStmt() (stmt ast.Stmt) {
 }
 
 func (p *Parser) parseRaiseStmt() *ast.RaiseStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	var expr ast.Expr
 	p.scan()
 	if tokens.InitOfExpr(p.tok) {
@@ -996,39 +882,33 @@ func (p *Parser) parseRaiseStmt() *ast.RaiseStmt {
 	return &ast.RaiseStmt{
 		Expr: expr,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseExecuteStmt() *ast.ExecuteStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	return &ast.ExecuteStmt{
 		Expr: p.parseExpression(),
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseAssignOrCallStmt() (stmt ast.Stmt) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	left, newvar, call := p.parseIdentExpr(true)
 	if call {
 		stmt = &ast.CallStmt{
 			Ident: left,
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -1046,10 +926,8 @@ func (p *Parser) parseAssignOrCallStmt() (stmt ast.Stmt) {
 			Left:  left,
 			Right: right,
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1057,7 +935,7 @@ func (p *Parser) parseAssignOrCallStmt() (stmt ast.Stmt) {
 }
 
 func (p *Parser) parseIfStmt() *ast.IfStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	cond := p.parseExpression()
 	p.expect(tokens.THEN)
@@ -1067,7 +945,7 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 	if p.tok == tokens.ELSIF {
 		elsifpart = []*ast.ElsIfStmt{}
 		for p.tok == tokens.ELSIF {
-			pos, line := p.begpos, p.curline
+			beg := p.tokInfo
 			p.scan()
 			elsifcond := p.parseExpression()
 			p.expect(tokens.THEN)
@@ -1077,25 +955,21 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 				Cond: elsifcond,
 				Then: elsifthen,
 				Place: ast.Place{
-					Pos:     pos,
-					Len:     p.endpos - pos,
-					BegLine: line,
-					EndLine: p.endline,
+					Beg: beg,
+					End: p.prevTokInfo,
 				},
 			})
 		}
 	}
 	var elsepart *ast.ElseStmt
 	if p.tok == tokens.ELSE {
-		pos, line := p.begpos, p.curline
+		beg := p.tokInfo
 		p.scan()
 		elsepart = &ast.ElseStmt{
 			Body: p.parseStatements(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1107,16 +981,14 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 		ElsIf: elsifpart,
 		Else:  elsepart,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseTryStmt() *ast.TryStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	try := p.parseStatements()
 	p.expect(tokens.EXCEPT)
@@ -1127,30 +999,26 @@ func (p *Parser) parseTryStmt() *ast.TryStmt {
 		Try:    try,
 		Except: except,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseExceptStmt() ast.ExceptStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	return ast.ExceptStmt{
 		Body: p.parseStatements(),
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseWhileStmt() *ast.WhileStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	cond := p.parseExpression()
 	p.expect(tokens.DO)
@@ -1162,16 +1030,14 @@ func (p *Parser) parseWhileStmt() *ast.WhileStmt {
 		Cond: cond,
 		Body: body,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseForStmt() *ast.ForStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.expect(tokens.IDENT)
 	ident, newvar, call := p.parseIdentExpr(true)
 	if call {
@@ -1201,16 +1067,14 @@ func (p *Parser) parseForStmt() *ast.ForStmt {
 		To:    until,
 		Body:  body,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseForEachStmt() *ast.ForEachStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	p.expect(tokens.IDENT)
 	ident, newvar, call := p.parseIdentExpr(true)
@@ -1237,16 +1101,14 @@ func (p *Parser) parseForEachStmt() *ast.ForEachStmt {
 		In:    collection,
 		Body:  body,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseGotoStmt() *ast.GotoStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	p.expect(tokens.LABEL)
 	label := p.lit
@@ -1254,16 +1116,29 @@ func (p *Parser) parseGotoStmt() *ast.GotoStmt {
 	return &ast.GotoStmt{
 		Label: label,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
+		},
+	}
+}
+
+func (p *Parser) parseLabelStmt() *ast.LabelStmt {
+	beg := p.tokInfo
+	label := p.lit
+	p.scan()
+	p.expect(tokens.COLON)
+	p.tok = tokens.SEMICOLON // cheat code
+	return &ast.LabelStmt{
+		Label: label,
+		Place: ast.Place{
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
 
 func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	var expr ast.Expr
 	if p.isFunc {
@@ -1272,10 +1147,8 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 	return &ast.ReturnStmt{
 		Expr: expr,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.endpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
 		},
 	}
 }
@@ -1283,7 +1156,7 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 // @PREP
 
 func (p *Parser) parsePrepExpression() ast.PrepExpr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parsePrepAndExpr()
 	for p.tok == tokens.OR {
 		op := p.tok
@@ -1293,10 +1166,8 @@ func (p *Parser) parsePrepExpression() ast.PrepExpr {
 			Operator: op,
 			Right:    p.parsePrepAndExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1304,7 +1175,7 @@ func (p *Parser) parsePrepExpression() ast.PrepExpr {
 }
 
 func (p *Parser) parsePrepAndExpr() ast.PrepExpr {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	expr := p.parsePrepNotExpr()
 	for p.tok == tokens.AND {
 		op := p.tok
@@ -1314,10 +1185,8 @@ func (p *Parser) parsePrepAndExpr() ast.PrepExpr {
 			Operator: op,
 			Right:    p.parsePrepNotExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	}
@@ -1325,16 +1194,14 @@ func (p *Parser) parsePrepAndExpr() ast.PrepExpr {
 }
 
 func (p *Parser) parsePrepNotExpr() (expr ast.PrepExpr) {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	if p.tok == tokens.NOT {
 		p.scan()
 		expr = &ast.PrepNotExpr{
 			Expr: p.parsePrepSymExpr(),
 			Place: ast.Place{
-				Pos:     pos,
-				Len:     p.endpos - pos,
-				BegLine: line,
-				EndLine: p.endline,
+				Beg: beg,
+				End: p.prevTokInfo,
 			},
 		}
 	} else {
@@ -1350,10 +1217,8 @@ func (p *Parser) parsePrepSymExpr() (expr ast.PrepExpr) {
 			Symbol: p.lit,
 			Exist:  exist,
 			Place: ast.Place{
-				Pos:     p.begpos,
-				Len:     p.curpos - p.begpos,
-				BegLine: p.curline,
-				EndLine: p.endline,
+				Beg: p.tokInfo,
+				End: p.tokInfo,
 			},
 		}
 	}
@@ -1361,52 +1226,79 @@ func (p *Parser) parsePrepSymExpr() (expr ast.PrepExpr) {
 }
 
 func (p *Parser) parsePrepIfInst() *ast.PrepIfInst {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	cond := p.parseExpression()
 	p.expect(tokens.THEN)
-	p.tok = tokens.SEMICOLON
+	p.tok = tokens.SEMICOLON // cheatcode
 	return &ast.PrepIfInst{
 		Cond: cond,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.curpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.tokInfo,
 		},
 	}
 }
 
 func (p *Parser) parsePrepElsIfInst() *ast.PrepElsIfInst {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	cond := p.parseExpression()
 	p.expect(tokens.THEN)
-	p.tok = tokens.SEMICOLON
+	p.tok = tokens.SEMICOLON // cheatcode
 	return &ast.PrepElsIfInst{
 		Cond: cond,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.curpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.prevTokInfo,
+		},
+	}
+}
+
+func (p *Parser) parsePrepElseInst() *ast.PrepElseInst {
+	beg := p.tokInfo
+	p.tok = tokens.SEMICOLON // cheatcode
+	return &ast.PrepElseInst{
+		Place: ast.Place{
+			Beg: beg,
+			End: p.tokInfo,
+		},
+	}
+}
+
+func (p *Parser) parsePrepEndIfInst() *ast.PrepEndIfInst {
+	beg := p.tokInfo
+	p.tok = tokens.SEMICOLON // cheatcode
+	return &ast.PrepEndIfInst{
+		Place: ast.Place{
+			Beg: beg,
+			End: p.tokInfo,
 		},
 	}
 }
 
 func (p *Parser) parsePrepRegionInst() *ast.PrepRegionInst {
-	pos, line := p.begpos, p.curline
+	beg := p.tokInfo
 	p.scan()
 	p.expect(tokens.IDENT)
 	name := p.lit
-	p.tok = tokens.SEMICOLON
+	p.tok = tokens.SEMICOLON // cheatcode
 	return &ast.PrepRegionInst{
 		Name: name,
 		Place: ast.Place{
-			Pos:     pos,
-			Len:     p.curpos - pos,
-			BegLine: line,
-			EndLine: p.endline,
+			Beg: beg,
+			End: p.tokInfo,
+		},
+	}
+}
+
+func (p *Parser) parsePrepEndRegionInst() *ast.PrepEndRegionInst {
+	beg := p.tokInfo
+	p.tok = tokens.SEMICOLON // cheatcode
+	return &ast.PrepEndRegionInst{
+		Place: ast.Place{
+			Beg: beg,
+			End: p.tokInfo,
 		},
 	}
 }

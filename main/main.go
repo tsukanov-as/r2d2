@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tsukanov-as/r2d2/plugins"
+
+	"github.com/tsukanov-as/r2d2/bsl/ast"
 	"github.com/tsukanov-as/r2d2/bsl/parser"
 )
 
@@ -16,10 +19,18 @@ func parse(path string) {
 		}
 	}()
 
-	var p parser.Parser
+	p := &parser.Parser{}
 
 	p.Init(path)
-	p.Parse()
+	m := p.Parse()
+
+	v := &ast.Visitor{}
+	plugins := []interface{}{
+		plugins.PluginWrongComment(p),
+	}
+	v.HookUp(plugins)
+
+	m.Accept(v)
 
 }
 

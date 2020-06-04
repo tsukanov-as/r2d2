@@ -14,16 +14,14 @@ type PrepSymbol = string
 
 // Node ...
 type Node interface {
-	Visit(*Visitor)
+	Accept(*Visitor)
 	//Place() *Place
 }
 
 // Place ...
 type Place struct {
-	Pos     int
-	Len     int
-	BegLine int
-	EndLine int
+	Beg *tokens.TokenInfo
+	End *tokens.TokenInfo
 }
 
 // Decl ...
@@ -58,21 +56,20 @@ type Module struct {
 	Auto      []*AutoDecl
 	Body      []Stmt
 	Interface []Decl // TODO: Item?
-	Comments  map[int]string
 }
 
-func (node *Module) Visit(visitor *Visitor) {
+func (node *Module) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitModule {
 		plugin.VisitModule(node)
 	}
 	for _, decl := range node.Decls {
-		decl.Visit(visitor)
+		decl.Accept(visitor)
 	}
 	for _, auto := range node.Auto {
-		auto.Visit(visitor)
+		auto.Accept(visitor)
 	}
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveModule {
 		plugin.LeaveModule(node)
@@ -118,12 +115,12 @@ type VarModListDecl struct {
 	Place
 }
 
-func (node *VarModListDecl) Visit(visitor *Visitor) {
+func (node *VarModListDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitVarModListDecl {
 		plugin.VisitVarModListDecl(node)
 	}
 	for _, decl := range node.List {
-		decl.Visit(visitor)
+		decl.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveVarModListDecl {
 		plugin.LeaveVarModListDecl(node)
@@ -138,7 +135,7 @@ type VarModDecl struct {
 	Place
 }
 
-func (node *VarModDecl) Visit(visitor *Visitor) {
+func (node *VarModDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitVarModDecl {
 		plugin.VisitVarModDecl(node)
 	}
@@ -150,7 +147,7 @@ type VarLocDecl struct {
 	Place
 }
 
-func (node *VarLocDecl) Visit(visitor *Visitor) {
+func (node *VarLocDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitVarLocDecl {
 		plugin.VisitVarLocDecl(node)
 	}
@@ -162,7 +159,7 @@ type AutoDecl struct {
 	Place
 }
 
-func (node *AutoDecl) Visit(visitor *Visitor) {
+func (node *AutoDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitAutoDecl {
 		plugin.VisitAutoDecl(node)
 	}
@@ -176,12 +173,12 @@ type ParamDecl struct {
 	Place
 }
 
-func (node *ParamDecl) Visit(visitor *Visitor) {
+func (node *ParamDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitParamDecl {
 		plugin.VisitParamDecl(node)
 	}
 	if node.Value != nil {
-		node.Value.Visit(visitor)
+		node.Value.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveParamDecl {
 		plugin.LeaveParamDecl(node)
@@ -190,25 +187,25 @@ func (node *ParamDecl) Visit(visitor *Visitor) {
 
 // MethodDecl ...
 type MethodDecl struct {
-	Sign Signature
+	Sign *Signature
 	Vars []*VarLocDecl
 	Auto []*AutoDecl
 	Body []Stmt
 	Place
 }
 
-func (node *MethodDecl) Visit(visitor *Visitor) {
+func (node *MethodDecl) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitMethodDecl {
 		plugin.VisitMethodDecl(node)
 	}
 	for _, decl := range node.Vars {
-		decl.Visit(visitor)
+		decl.Accept(visitor)
 	}
 	for _, auto := range node.Auto {
-		auto.Visit(visitor)
+		auto.Accept(visitor)
 	}
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveMethodDecl {
 		plugin.LeaveMethodDecl(node)
@@ -216,49 +213,24 @@ func (node *MethodDecl) Visit(visitor *Visitor) {
 }
 
 // Signature ...
-type Signature interface {
-	// ProcDecl, FuncDecl
-}
-
-// ProcSign ...
-type ProcSign struct {
+type Signature struct {
 	Name      string
+	Function  bool
 	Directive *tokens.Token
 	Params    []*ParamDecl
 	Export    bool
 	Place
 }
 
-func (node *ProcSign) Visit(visitor *Visitor) {
+func (node *Signature) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitProcSign {
 		plugin.VisitProcSign(node)
 	}
 	for _, decl := range node.Params {
-		decl.Visit(visitor)
+		decl.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveProcSign {
 		plugin.LeaveProcSign(node)
-	}
-}
-
-// FuncSign ...
-type FuncSign struct {
-	Name      string
-	Directive *tokens.Token
-	Params    []*ParamDecl
-	Export    bool
-	Place
-}
-
-func (node *FuncSign) Visit(visitor *Visitor) {
-	for _, plugin := range visitor.VisitFuncSign {
-		plugin.VisitFuncSign(node)
-	}
-	for _, decl := range node.Params {
-		decl.Visit(visitor)
-	}
-	for _, plugin := range visitor.LeaveFuncSign {
-		plugin.LeaveFuncSign(node)
 	}
 }
 
@@ -269,7 +241,7 @@ type BasicLitExpr struct {
 	Place
 }
 
-func (node *BasicLitExpr) Visit(visitor *Visitor) {
+func (node *BasicLitExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitBasicLitExpr {
 		plugin.VisitBasicLitExpr(node)
 	}
@@ -283,14 +255,14 @@ type FieldExpr struct {
 	Place
 }
 
-func (node *FieldExpr) Visit(visitor *Visitor) {
+func (node *FieldExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitFieldExpr {
 		plugin.VisitFieldExpr(node)
 	}
 	if node.Args != nil {
 		for _, expr := range node.Args {
 			if expr != nil {
-				expr.Visit(visitor)
+				expr.Accept(visitor)
 			}
 		}
 	}
@@ -305,11 +277,11 @@ type IndexExpr struct {
 	Place
 }
 
-func (node *IndexExpr) Visit(visitor *Visitor) {
+func (node *IndexExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitIndexExpr {
 		plugin.VisitIndexExpr(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeaveIndexExpr {
 		plugin.LeaveIndexExpr(node)
 	}
@@ -329,19 +301,19 @@ type IdentExpr struct {
 	Place
 }
 
-func (node *IdentExpr) Visit(visitor *Visitor) {
+func (node *IdentExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitIdentExpr {
 		plugin.VisitIdentExpr(node)
 	}
 	if node.Args != nil {
 		for _, expr := range node.Args {
 			if expr != nil {
-				expr.Visit(visitor)
+				expr.Accept(visitor)
 			}
 		}
 	}
 	for _, item := range node.Tail {
-		item.Visit(visitor)
+		item.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveIdentExpr {
 		plugin.LeaveIdentExpr(node)
@@ -355,11 +327,11 @@ type UnaryExpr struct {
 	Place
 }
 
-func (node *UnaryExpr) Visit(visitor *Visitor) {
+func (node *UnaryExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitUnaryExpr {
 		plugin.VisitUnaryExpr(node)
 	}
-	node.Operand.Visit(visitor)
+	node.Operand.Accept(visitor)
 	for _, plugin := range visitor.LeaveUnaryExpr {
 		plugin.LeaveUnaryExpr(node)
 	}
@@ -373,12 +345,12 @@ type BinaryExpr struct {
 	Place
 }
 
-func (node *BinaryExpr) Visit(visitor *Visitor) {
+func (node *BinaryExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitBinaryExpr {
 		plugin.VisitBinaryExpr(node)
 	}
-	node.Left.Visit(visitor)
-	node.Right.Visit(visitor)
+	node.Left.Accept(visitor)
+	node.Right.Accept(visitor)
 	for _, plugin := range visitor.LeaveBinaryExpr {
 		plugin.LeaveBinaryExpr(node)
 	}
@@ -391,14 +363,14 @@ type NewExpr struct {
 	Place
 }
 
-func (node *NewExpr) Visit(visitor *Visitor) {
+func (node *NewExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitNewExpr {
 		plugin.VisitNewExpr(node)
 	}
 	if node.Args != nil {
 		for _, expr := range node.Args {
 			if expr != nil {
-				expr.Visit(visitor)
+				expr.Accept(visitor)
 			}
 		}
 	}
@@ -416,15 +388,15 @@ type TernaryExpr struct {
 	Place
 }
 
-func (node *TernaryExpr) Visit(visitor *Visitor) {
+func (node *TernaryExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitTernaryExpr {
 		plugin.VisitTernaryExpr(node)
 	}
-	node.Cond.Visit(visitor)
-	node.Then.Visit(visitor)
-	node.Else.Visit(visitor)
+	node.Cond.Accept(visitor)
+	node.Then.Accept(visitor)
+	node.Else.Accept(visitor)
 	for _, item := range node.Tail {
-		item.Visit(visitor)
+		item.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveTernaryExpr {
 		plugin.LeaveTernaryExpr(node)
@@ -437,11 +409,11 @@ type ParenExpr struct {
 	Place
 }
 
-func (node *ParenExpr) Visit(visitor *Visitor) {
+func (node *ParenExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitParenExpr {
 		plugin.VisitParenExpr(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeaveParenExpr {
 		plugin.LeaveParenExpr(node)
 	}
@@ -453,11 +425,11 @@ type NotExpr struct {
 	Place
 }
 
-func (node *NotExpr) Visit(visitor *Visitor) {
+func (node *NotExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitNotExpr {
 		plugin.VisitNotExpr(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeaveNotExpr {
 		plugin.LeaveNotExpr(node)
 	}
@@ -469,12 +441,12 @@ type StringExpr struct {
 	Place
 }
 
-func (node *StringExpr) Visit(visitor *Visitor) {
+func (node *StringExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitStringExpr {
 		plugin.VisitStringExpr(node)
 	}
 	for _, item := range node.List {
-		item.Visit(visitor)
+		item.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveStringExpr {
 		plugin.LeaveStringExpr(node)
@@ -488,12 +460,12 @@ type AssignStmt struct {
 	Place
 }
 
-func (node *AssignStmt) Visit(visitor *Visitor) {
+func (node *AssignStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitAssignStmt {
 		plugin.VisitAssignStmt(node)
 	}
-	node.Left.Visit(visitor)
-	node.Right.Visit(visitor)
+	node.Left.Accept(visitor)
+	node.Right.Accept(visitor)
 	for _, plugin := range visitor.LeaveAssignStmt {
 		plugin.LeaveAssignStmt(node)
 	}
@@ -505,12 +477,12 @@ type ReturnStmt struct {
 	Place
 }
 
-func (node *ReturnStmt) Visit(visitor *Visitor) {
+func (node *ReturnStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitReturnStmt {
 		plugin.VisitReturnStmt(node)
 	}
 	if node.Expr != nil {
-		node.Expr.Visit(visitor)
+		node.Expr.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveReturnStmt {
 		plugin.LeaveReturnStmt(node)
@@ -522,7 +494,7 @@ type BreakStmt struct {
 	Place
 }
 
-func (node *BreakStmt) Visit(visitor *Visitor) {
+func (node *BreakStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitBreakStmt {
 		plugin.VisitBreakStmt(node)
 	}
@@ -533,7 +505,7 @@ type ContinueStmt struct {
 	Place
 }
 
-func (node *ContinueStmt) Visit(visitor *Visitor) {
+func (node *ContinueStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitContinueStmt {
 		plugin.VisitContinueStmt(node)
 	}
@@ -545,12 +517,12 @@ type RaiseStmt struct {
 	Place
 }
 
-func (node *RaiseStmt) Visit(visitor *Visitor) {
+func (node *RaiseStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitRaiseStmt {
 		plugin.VisitRaiseStmt(node)
 	}
 	if node.Expr != nil {
-		node.Expr.Visit(visitor)
+		node.Expr.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveRaiseStmt {
 		plugin.LeaveRaiseStmt(node)
@@ -563,11 +535,11 @@ type ExecuteStmt struct {
 	Place
 }
 
-func (node *ExecuteStmt) Visit(visitor *Visitor) {
+func (node *ExecuteStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitExecuteStmt {
 		plugin.VisitExecuteStmt(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeaveExecuteStmt {
 		plugin.LeaveExecuteStmt(node)
 	}
@@ -579,11 +551,11 @@ type CallStmt struct {
 	Place
 }
 
-func (node *CallStmt) Visit(visitor *Visitor) {
+func (node *CallStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitCallStmt {
 		plugin.VisitCallStmt(node)
 	}
-	node.Ident.Visit(visitor)
+	node.Ident.Accept(visitor)
 	for _, plugin := range visitor.LeaveCallStmt {
 		plugin.LeaveCallStmt(node)
 	}
@@ -598,20 +570,20 @@ type IfStmt struct {
 	Place
 }
 
-func (node *IfStmt) Visit(visitor *Visitor) {
+func (node *IfStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitIfStmt {
 		plugin.VisitIfStmt(node)
 	}
 	for _, stmt := range node.Then {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	if node.ElsIf != nil {
 		for _, stmt := range node.ElsIf {
-			stmt.Visit(visitor)
+			stmt.Accept(visitor)
 		}
 	}
 	if node.Else != nil {
-		node.Else.Visit(visitor)
+		node.Else.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveIfStmt {
 		plugin.LeaveIfStmt(node)
@@ -624,12 +596,12 @@ type ElseStmt struct {
 	Place
 }
 
-func (node *ElseStmt) Visit(visitor *Visitor) {
+func (node *ElseStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitElseStmt {
 		plugin.VisitElseStmt(node)
 	}
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveElseStmt {
 		plugin.LeaveElseStmt(node)
@@ -643,13 +615,13 @@ type ElsIfStmt struct {
 	Place
 }
 
-func (node *ElsIfStmt) Visit(visitor *Visitor) {
+func (node *ElsIfStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitElsIfStmt {
 		plugin.VisitElsIfStmt(node)
 	}
-	node.Cond.Visit(visitor)
+	node.Cond.Accept(visitor)
 	for _, stmt := range node.Then {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveElsIfStmt {
 		plugin.LeaveElsIfStmt(node)
@@ -663,13 +635,13 @@ type WhileStmt struct {
 	Place
 }
 
-func (node *WhileStmt) Visit(visitor *Visitor) {
+func (node *WhileStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitWhileStmt {
 		plugin.VisitWhileStmt(node)
 	}
-	node.Cond.Visit(visitor)
+	node.Cond.Accept(visitor)
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveWhileStmt {
 		plugin.LeaveWhileStmt(node)
@@ -685,15 +657,15 @@ type ForStmt struct {
 	Place
 }
 
-func (node *ForStmt) Visit(visitor *Visitor) {
+func (node *ForStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitForStmt {
 		plugin.VisitForStmt(node)
 	}
-	node.Ident.Visit(visitor)
-	node.From.Visit(visitor)
-	node.To.Visit(visitor)
+	node.Ident.Accept(visitor)
+	node.From.Accept(visitor)
+	node.To.Accept(visitor)
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveForStmt {
 		plugin.LeaveForStmt(node)
@@ -708,14 +680,14 @@ type ForEachStmt struct {
 	Place
 }
 
-func (node *ForEachStmt) Visit(visitor *Visitor) {
+func (node *ForEachStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitForEachStmt {
 		plugin.VisitForEachStmt(node)
 	}
-	node.Ident.Visit(visitor)
-	node.In.Visit(visitor)
+	node.Ident.Accept(visitor)
+	node.In.Accept(visitor)
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveForEachStmt {
 		plugin.LeaveForEachStmt(node)
@@ -729,14 +701,14 @@ type TryStmt struct {
 	Place
 }
 
-func (node *TryStmt) Visit(visitor *Visitor) {
+func (node *TryStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitTryStmt {
 		plugin.VisitTryStmt(node)
 	}
 	for _, stmt := range node.Try {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
-	node.Except.Visit(visitor)
+	node.Except.Accept(visitor)
 	for _, plugin := range visitor.LeaveTryStmt {
 		plugin.LeaveTryStmt(node)
 	}
@@ -748,12 +720,12 @@ type ExceptStmt struct {
 	Place
 }
 
-func (node *ExceptStmt) Visit(visitor *Visitor) {
+func (node *ExceptStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitExceptStmt {
 		plugin.VisitExceptStmt(node)
 	}
 	for _, stmt := range node.Body {
-		stmt.Visit(visitor)
+		stmt.Accept(visitor)
 	}
 	for _, plugin := range visitor.LeaveExceptStmt {
 		plugin.LeaveExceptStmt(node)
@@ -766,7 +738,7 @@ type GotoStmt struct {
 	Place
 }
 
-func (node *GotoStmt) Visit(visitor *Visitor) {
+func (node *GotoStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitGotoStmt {
 		plugin.VisitGotoStmt(node)
 	}
@@ -778,7 +750,7 @@ type LabelStmt struct {
 	Place
 }
 
-func (node *LabelStmt) Visit(visitor *Visitor) {
+func (node *LabelStmt) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitLabelStmt {
 		plugin.VisitLabelStmt(node)
 	}
@@ -790,11 +762,11 @@ type PrepIfInst struct {
 	Place
 }
 
-func (node *PrepIfInst) Visit(visitor *Visitor) {
+func (node *PrepIfInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepIfInst {
 		plugin.VisitPrepIfInst(node)
 	}
-	node.Cond.Visit(visitor)
+	node.Cond.Accept(visitor)
 	for _, plugin := range visitor.LeavePrepIfInst {
 		plugin.LeavePrepIfInst(node)
 	}
@@ -806,11 +778,11 @@ type PrepElsIfInst struct {
 	Place
 }
 
-func (node *PrepElsIfInst) Visit(visitor *Visitor) {
+func (node *PrepElsIfInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepElsIfInst {
 		plugin.VisitPrepElsIfInst(node)
 	}
-	node.Cond.Visit(visitor)
+	node.Cond.Accept(visitor)
 	for _, plugin := range visitor.LeavePrepElsIfInst {
 		plugin.LeavePrepElsIfInst(node)
 	}
@@ -821,7 +793,7 @@ type PrepElseInst struct {
 	Place
 }
 
-func (node *PrepElseInst) Visit(visitor *Visitor) {
+func (node *PrepElseInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepElseInst {
 		plugin.VisitPrepElseInst(node)
 	}
@@ -832,7 +804,7 @@ type PrepEndIfInst struct {
 	Place
 }
 
-func (node *PrepEndIfInst) Visit(visitor *Visitor) {
+func (node *PrepEndIfInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepEndIfInst {
 		plugin.VisitPrepEndIfInst(node)
 	}
@@ -844,7 +816,7 @@ type PrepRegionInst struct {
 	Place
 }
 
-func (node *PrepRegionInst) Visit(visitor *Visitor) {
+func (node *PrepRegionInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepRegionInst {
 		plugin.VisitPrepRegionInst(node)
 	}
@@ -855,7 +827,7 @@ type PrepEndRegionInst struct {
 	Place
 }
 
-func (node *PrepEndRegionInst) Visit(visitor *Visitor) {
+func (node *PrepEndRegionInst) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepEndRegionInst {
 		plugin.VisitPrepEndRegionInst(node)
 	}
@@ -869,12 +841,12 @@ type PrepBinaryExpr struct {
 	Place
 }
 
-func (node *PrepBinaryExpr) Visit(visitor *Visitor) {
+func (node *PrepBinaryExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepBinaryExpr {
 		plugin.VisitPrepBinaryExpr(node)
 	}
-	node.Left.Visit(visitor)
-	node.Right.Visit(visitor)
+	node.Left.Accept(visitor)
+	node.Right.Accept(visitor)
 	for _, plugin := range visitor.LeavePrepBinaryExpr {
 		plugin.LeavePrepBinaryExpr(node)
 	}
@@ -886,11 +858,11 @@ type PrepNotExpr struct {
 	Place
 }
 
-func (node *PrepNotExpr) Visit(visitor *Visitor) {
+func (node *PrepNotExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepNotExpr {
 		plugin.VisitPrepNotExpr(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeavePrepNotExpr {
 		plugin.LeavePrepNotExpr(node)
 	}
@@ -903,7 +875,7 @@ type PrepSymExpr struct {
 	Place
 }
 
-func (node *PrepSymExpr) Visit(visitor *Visitor) {
+func (node *PrepSymExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepSymExpr {
 		plugin.VisitPrepSymExpr(node)
 	}
@@ -915,11 +887,11 @@ type PrepParenExpr struct {
 	Place
 }
 
-func (node *PrepParenExpr) Visit(visitor *Visitor) {
+func (node *PrepParenExpr) Accept(visitor *Visitor) {
 	for _, plugin := range visitor.VisitPrepParenExpr {
 		plugin.VisitPrepParenExpr(node)
 	}
-	node.Expr.Visit(visitor)
+	node.Expr.Accept(visitor)
 	for _, plugin := range visitor.LeavePrepParenExpr {
 		plugin.LeavePrepParenExpr(node)
 	}
