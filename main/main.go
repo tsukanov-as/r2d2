@@ -22,8 +22,6 @@ func parse(path string) {
 		}
 	}()
 
-	wg.Add(1)
-
 	p := &parser.Parser{}
 
 	p.Init(path)
@@ -54,6 +52,7 @@ func walker(path string, fileInfo os.FileInfo, err error) error {
 
 	if filepath.Ext(path) == ".bsl" {
 
+		wg.Add(1)
 		go parse(path)
 
 	} else if filepath.Base(path) == "Form.xml" {
