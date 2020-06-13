@@ -23,7 +23,7 @@ func (p *pluginWrongComment) VisitMethodDecl(node ast.Node) {
 		comment := strings.TrimRight(p.src[nextTokenInfo.BegOffset:nextTokenInfo.EndOffset], " \t\r\n")
 		validComment := " " + decl.Sign.Name + "()"
 		if comment != validComment {
-			println("wrong comment: `"+comment+"`", " valid comment: `"+validComment+"`")
+			// fmt.Printf("wrong comment: `%v` valid comment: `%v`\n", comment, validComment)
 		}
 	}
 }
