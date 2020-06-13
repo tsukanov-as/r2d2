@@ -4,20 +4,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/tsukanov-as/r2d2/plugins"
+	"sync"
 
 	"github.com/tsukanov-as/r2d2/bsl/ast"
 	"github.com/tsukanov-as/r2d2/bsl/parser"
+	"github.com/tsukanov-as/r2d2/plugins"
 )
+
+var wg sync.WaitGroup
 
 func parse(path string) {
 
 	defer func() {
+		wg.Done()
 		if r := recover(); r != nil {
 			fmt.Println(r)
 		}
 	}()
+
+	wg.Add(1)
 
 	p := &parser.Parser{}
 
@@ -25,12 +30,15 @@ func parse(path string) {
 	m := p.Parse()
 
 	v := &ast.Visitor{}
-	plugins := []interface{}{
-		plugins.PluginWrongComment(p),
+	plist := []interface{}{}
+	for i := 0; i < 1000; i++ {
+		plist = append(plist, plugins.PluginWrongComment(p))
 	}
-	v.HookUp(plugins)
+	v.HookUp(plist)
 
 	m.Accept(v)
+
+	// fmt.Printf("%v\n", len(m.Decls))
 
 }
 
@@ -91,5 +99,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
+
+	wg.Wait()
 
 }
